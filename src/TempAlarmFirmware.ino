@@ -114,7 +114,7 @@ static void doReportIfTime(void)
         SERIAL.println("Reporting sensor data to server");
 
         snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f, \"humid\": %.1f}", currentTempF, currentHumid);
-        Particle.publish("sensorData", publishString);
+        Particle.publish("sensorData", publishString, PRIVATE);
 
         lastReportMillis = now;
     }
