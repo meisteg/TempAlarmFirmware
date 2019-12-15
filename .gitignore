@@ -1,0 +1,7 @@
+.vscode/*
+target/*
+lib/*
+
+*.bin
+
+TempAlarmFirmware.cpp
