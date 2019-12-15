@@ -25,87 +25,66 @@
 
 #define SENSOR_CHECK_MS    2000
 
-#define EEPROM_PROGRAM_KEY 0xA5A5A5A5
-#define EEPROM_REPORT_MS   60000
+#define SETTINGS_ADDR      0x0000
+#define SETTINGS_MAGIC_NUM 0xdeb8ab1e
+#define DEFAULT_REPORT_MS  120000
 
 #define MAX_READING_DELTA  5.0
 
-struct settingsEEPROM {
-    unsigned int programmedKey;
-    unsigned int sensorReportMillis;
+struct SensorSettings
+{
+    uint32_t magic;
+    unsigned int reportMillis;
 };
 
-union {
-    settingsEEPROM settings;
-    char raw[sizeof(settingsEEPROM)];
-} EEPROM_Data;
-
+SensorSettings sensorSettings;
 double currentTempF = 0.0;
 double currentHumid = 0.0;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
-static void readEEPROM(void) {
-    unsigned int i;
-    for (i = 0; i < sizeof(settingsEEPROM); ++i) {
-        EEPROM_Data.raw[i] = EEPROM.read(i);
-    }
-    SERIAL.print(i);
-    SERIAL.println(" bytes read from EEPROM");
+static int setReportRate(String rate)
+{
+    unsigned int reportMillis = atoi(rate.c_str());
+
+    SERIAL.print("New reportMillis: ");
+    SERIAL.println(reportMillis);
+
+    sensorSettings.reportMillis = reportMillis;
+    EEPROM.put(SETTINGS_ADDR, sensorSettings);
+
+    return 0;
 }
 
-static void writeEEPROM(void) {
-    unsigned int i;
-    for (i = 0; i < sizeof(settingsEEPROM); ++i) {
-        EEPROM.write(i, EEPROM_Data.raw[i]);
-    }
-    SERIAL.print(i);
-    SERIAL.println(" bytes wrote to EEPROM");
-}
-
-static int setReportRate(String rate) {
-    unsigned int sensorReportMillis = atoi(rate.c_str());
-
-    if (sensorReportMillis >= EEPROM_REPORT_MS) {
-        SERIAL.print("Changing sensorReportMillis from ");
-        SERIAL.print(EEPROM_Data.settings.sensorReportMillis);
-        SERIAL.print(" to ");
-        SERIAL.println(sensorReportMillis);
-
-        EEPROM_Data.settings.sensorReportMillis = sensorReportMillis;
-        writeEEPROM();
-
-        return 0;
-    }
-
-    SERIAL.println("New sensorReportMillis value is too small. Rejecting.");
-    return -1;
-}
-
-static void doMonitorIfTime(void) {
+static void doMonitorIfTime(void)
+{
     static unsigned long lastReadingMillis = 0;
     static bool haveValidReading = false;
     unsigned long now = millis();
 
-    if ((now - lastReadingMillis) >= SENSOR_CHECK_MS) {
+    if ((now - lastReadingMillis) >= SENSOR_CHECK_MS)
+    {
         float h = dht.getHumidity();
         float f = dht.getTempFarenheit();
 
         float delta_temp = f - currentTempF;
 
         // Check if reading failed
-        if (isnan(h) || isnan(f)) {
+        if (isnan(h) || isnan(f))
+        {
             SERIAL.println("Failed to read from DHT sensor!");
         }
         // Sanity check temperature read from sensor. If delta from previous
         // reading is greater than MAX_READING_DELTA degrees, it probably is bogus.
-        else if (haveValidReading && (fabsf(delta_temp) > MAX_READING_DELTA)) {
+        else if (haveValidReading && (fabsf(delta_temp) > MAX_READING_DELTA))
+        {
             SERIAL.print("Bad reading (");
             SERIAL.print(f);
             SERIAL.println(") from DHT sensor!");
         }
         // Reading is good, keep it
-        else {
+        else
+        {
             currentHumid = h;
             currentTempF = f;
 
@@ -124,39 +103,43 @@ static void doMonitorIfTime(void) {
     }
 }
 
-static void doReportIfTime(void) {
-    static bool firstTime = true;
+static void doReportIfTime(void)
+{
     static unsigned long lastReportMillis = 0;
     unsigned long now = millis();
     char publishString[64];
 
-    if (firstTime || ((now - lastReportMillis) >= EEPROM_Data.settings.sensorReportMillis)) {
+    if ((now - lastReportMillis) >= sensorSettings.reportMillis)
+    {
         SERIAL.println("Reporting sensor data to server");
 
         snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f, \"humid\": %.1f}", currentTempF, currentHumid);
         Particle.publish("sensorData", publishString);
 
         lastReportMillis = now;
-        firstTime = false;
     }
 }
 
-void setup(void) {
+void setup(void)
+{
     SERIAL.begin(SERIAL_BAUD);
 
     SERIAL.println("Initializing DHT22 sensor");
     dht.begin();
     delay(2000);
 
-    readEEPROM();
-    if (EEPROM_PROGRAM_KEY == EEPROM_Data.settings.programmedKey) {
-        SERIAL.print("sensorReportMillis = ");
-        SERIAL.println(EEPROM_Data.settings.sensorReportMillis);
-    } else {
+    EEPROM.get(SETTINGS_ADDR, sensorSettings);
+    if (SETTINGS_MAGIC_NUM == sensorSettings.magic)
+    {
+        SERIAL.print("reportMillis = ");
+        SERIAL.println(sensorSettings.reportMillis);
+    }
+    else
+    {
         SERIAL.println("EEPROM not programmed! Setting default values.");
-        EEPROM_Data.settings.programmedKey = EEPROM_PROGRAM_KEY;
-        EEPROM_Data.settings.sensorReportMillis = EEPROM_REPORT_MS;
-        writeEEPROM();
+        sensorSettings.magic = SETTINGS_MAGIC_NUM;
+        sensorSettings.reportMillis = DEFAULT_REPORT_MS;
+        EEPROM.put(SETTINGS_ADDR, sensorSettings);
     }
 
     Particle.variable("currentTempF", &currentTempF, DOUBLE);
@@ -165,7 +148,8 @@ void setup(void) {
     Particle.function("reportRate", setReportRate);
 }
 
-void loop(void) {
+void loop(void)
+{
     doMonitorIfTime();
     doReportIfTime();
 }
