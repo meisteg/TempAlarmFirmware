@@ -24,6 +24,8 @@
 #define DHT_PIN            D2
 #define DHT_TYPE           DHT22
 
+#define LED_PIN            D7
+
 #define SENSOR_CHECK_MS    2000
 
 #define SETTINGS_ADDR      0x0000
@@ -95,12 +97,14 @@ static void doMonitorIfTime(void)
         if (isnan(h) || isnan(f))
         {
             SERIAL.println("Failed to read from DHT sensor!");
+            digitalWrite(LED_PIN, HIGH);
         }
         // Sanity check temperature read from sensor. If delta from previous
         // reading is greater than MAX_READING_DELTA degrees, it probably is bogus.
         else if (haveValidReading && (fabsf(delta_temp) > MAX_READING_DELTA))
         {
             SERIAL.printlnf("Bad reading (%.2f) from DHT sensor!", f);
+            digitalWrite(LED_PIN, HIGH);
         }
         // Reading is good, keep it
         else
@@ -112,6 +116,7 @@ static void doMonitorIfTime(void)
             SERIAL.println(Time.timeStr());
 
             haveValidReading = true;
+            digitalWrite(LED_PIN, LOW);
         }
 
         lastReadingMillis = now;
@@ -176,6 +181,8 @@ void setup(void)
 
     AIOClient = new Adafruit_IO_Client(tcpClient, sensorSettings.aioKey);
     AIOClient->begin();
+
+    pinMode(LED_PIN, OUTPUT);
 }
 
 void loop(void)
