@@ -37,6 +37,8 @@
 // Adafruit IO API Key length
 #define AIO_KEY_LEN        32
 
+#define USE_ADAFRUIT_IO    (PLATFORM_ID != PLATFORM_XENON)
+
 struct SensorSettings
 {
     uint32_t magic;
@@ -51,8 +53,10 @@ bool haveValidReading = false;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
+#if USE_ADAFRUIT_IO
 TCPClient tcpClient;
 Adafruit_IO_Client* AIOClient;
+#endif
 
 static int setReportRate(String rate)
 {
@@ -139,6 +143,7 @@ static void doReportIfTime(void)
         snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f, \"humid\": %.1f}", currentTempF, currentHumid);
         Particle.publish("sensorData", publishString, PRIVATE);
 
+#if USE_ADAFRUIT_IO
         // Send to Adafruit IO
         Adafruit_IO_Feed tempFeed = AIOClient->getFeed("temp-alarm.temperature");
         snprintf(publishString, sizeof(publishString), "%.1f", currentTempF);
@@ -146,6 +151,7 @@ static void doReportIfTime(void)
         {
             SERIAL.println("Failed to publish temperature to Adafruit IO!");
         }
+#endif
 
         lastReportMillis = now;
     }
@@ -179,8 +185,10 @@ void setup(void)
     Particle.function("reportRate", setReportRate);
     Particle.function("aioKey", setAIOKey);
 
+#if USE_ADAFRUIT_IO
     AIOClient = new Adafruit_IO_Client(tcpClient, sensorSettings.aioKey);
     AIOClient->begin();
+#endif
 
     pinMode(LED_PIN, OUTPUT);
 }
