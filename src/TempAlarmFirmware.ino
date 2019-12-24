@@ -15,6 +15,7 @@
  */
 
 #include <Adafruit_DHT.h>
+#include <Adafruit_IO_Client.h>
 
 #define SERIAL             Serial   // USB port
 //#define SERIAL           Serial1  // TX/RX pins
@@ -31,10 +32,14 @@
 
 #define MAX_READING_DELTA  5.0
 
+// Adafruit IO API Key length
+#define AIO_KEY_LEN        32
+
 struct SensorSettings
 {
     uint32_t magic;
     unsigned int reportMillis;
+    char aioKey[AIO_KEY_LEN + 1];
 };
 
 SensorSettings sensorSettings;
@@ -43,6 +48,9 @@ double currentHumid = 0.0;
 bool haveValidReading = false;
 
 DHT dht(DHT_PIN, DHT_TYPE);
+
+TCPClient tcpClient;
+Adafruit_IO_Client* AIOClient;
 
 static int setReportRate(String rate)
 {
@@ -54,6 +62,21 @@ static int setReportRate(String rate)
     EEPROM.put(SETTINGS_ADDR, sensorSettings);
 
     return 0;
+}
+
+static int setAIOKey(String aioKey)
+{
+    if (aioKey.length() == AIO_KEY_LEN)
+    {
+        aioKey.getBytes((unsigned char *)sensorSettings.aioKey, sizeof(sensorSettings.aioKey));
+        EEPROM.put(SETTINGS_ADDR, sensorSettings);
+
+        SERIAL.printlnf("New AIO Key: %s", sensorSettings.aioKey);
+
+        return 0;
+    }
+
+    return -1;
 }
 
 static void doMonitorIfTime(void)
@@ -111,6 +134,14 @@ static void doReportIfTime(void)
         snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f, \"humid\": %.1f}", currentTempF, currentHumid);
         Particle.publish("sensorData", publishString, PRIVATE);
 
+        // Send to Adafruit IO
+        Adafruit_IO_Feed tempFeed = AIOClient->getFeed("temp-alarm.temperature");
+        snprintf(publishString, sizeof(publishString), "%.1f", currentTempF);
+        if (!tempFeed.send(publishString))
+        {
+            SERIAL.println("Failed to publish temperature to Adafruit IO!");
+        }
+
         lastReportMillis = now;
     }
 }
@@ -127,6 +158,7 @@ void setup(void)
     if (SETTINGS_MAGIC_NUM == sensorSettings.magic)
     {
         SERIAL.printlnf("reportMillis = %u", sensorSettings.reportMillis);
+        SERIAL.printlnf("AIO Key: %s", sensorSettings.aioKey);
     }
     else
     {
@@ -140,6 +172,10 @@ void setup(void)
     Particle.variable("currentHumid", &currentHumid, DOUBLE);
 
     Particle.function("reportRate", setReportRate);
+    Particle.function("aioKey", setAIOKey);
+
+    AIOClient = new Adafruit_IO_Client(tcpClient, sensorSettings.aioKey);
+    AIOClient->begin();
 }
 
 void loop(void)
