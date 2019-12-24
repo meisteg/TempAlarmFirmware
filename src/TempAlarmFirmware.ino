@@ -40,6 +40,7 @@ struct SensorSettings
 SensorSettings sensorSettings;
 double currentTempF = 0.0;
 double currentHumid = 0.0;
+bool haveValidReading = false;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
@@ -47,8 +48,7 @@ static int setReportRate(String rate)
 {
     unsigned int reportMillis = atoi(rate.c_str());
 
-    SERIAL.print("New reportMillis: ");
-    SERIAL.println(reportMillis);
+    SERIAL.printlnf("New reportMillis: %u", reportMillis);
 
     sensorSettings.reportMillis = reportMillis;
     EEPROM.put(SETTINGS_ADDR, sensorSettings);
@@ -59,7 +59,6 @@ static int setReportRate(String rate)
 static void doMonitorIfTime(void)
 {
     static unsigned long lastReadingMillis = 0;
-    static bool haveValidReading = false;
     unsigned long now = millis();
 
     if ((now - lastReadingMillis) >= SENSOR_CHECK_MS)
@@ -78,9 +77,7 @@ static void doMonitorIfTime(void)
         // reading is greater than MAX_READING_DELTA degrees, it probably is bogus.
         else if (haveValidReading && (fabsf(delta_temp) > MAX_READING_DELTA))
         {
-            SERIAL.print("Bad reading (");
-            SERIAL.print(f);
-            SERIAL.println(") from DHT sensor!");
+            SERIAL.printlnf("Bad reading (%.2f) from DHT sensor!", f);
         }
         // Reading is good, keep it
         else
@@ -88,12 +85,7 @@ static void doMonitorIfTime(void)
             currentHumid = h;
             currentTempF = f;
 
-            SERIAL.print("Humid: ");
-            SERIAL.print(currentHumid);
-            SERIAL.print("% - ");
-            SERIAL.print("Temp: ");
-            SERIAL.print(currentTempF);
-            SERIAL.print("*F ");
+            SERIAL.printf("Humid: %.2f%% - Temp: %.2f*F ", currentHumid, currentTempF);
             SERIAL.println(Time.timeStr());
 
             haveValidReading = true;
@@ -109,7 +101,10 @@ static void doReportIfTime(void)
     unsigned long now = millis();
     char publishString[64];
 
-    if ((now - lastReportMillis) >= sensorSettings.reportMillis)
+    // Skip report if there hasn't been a valid reading
+    if (!haveValidReading) return;
+
+    if ((lastReportMillis == 0) || ((now - lastReportMillis) >= sensorSettings.reportMillis))
     {
         SERIAL.println("Reporting sensor data to server");
 
@@ -131,8 +126,7 @@ void setup(void)
     EEPROM.get(SETTINGS_ADDR, sensorSettings);
     if (SETTINGS_MAGIC_NUM == sensorSettings.magic)
     {
-        SERIAL.print("reportMillis = ");
-        SERIAL.println(sensorSettings.reportMillis);
+        SERIAL.printlnf("reportMillis = %u", sensorSettings.reportMillis);
     }
     else
     {
