@@ -27,10 +27,13 @@
 #define LED_PIN            D7
 
 #define SENSOR_CHECK_MS    2000
+#define AIO_CHECK_MS       60000
 
 #define SETTINGS_ADDR      0x0000
 #define SETTINGS_MAGIC_NUM 0xdeb8ab1e
 #define DEFAULT_REPORT_MS  120000
+#define DEFAULT_LOW_THRES  40
+#define DEFAULT_HIGH_THRES 80
 
 #define MAX_READING_DELTA  5.0
 
@@ -44,12 +47,15 @@ struct SensorSettings
     uint32_t magic;
     unsigned int reportMillis;
     char aioKey[AIO_KEY_LEN + 1];
+    int lowThres;
+    int highThres;
 };
 
 SensorSettings sensorSettings;
 double currentTempF = 0.0;
 double currentHumid = 0.0;
 bool haveValidReading = false;
+bool sentAlarm = false;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
@@ -58,14 +64,22 @@ TCPClient tcpClient;
 Adafruit_IO_Client* AIOClient;
 #endif
 
+static void doAlarm(void)
+{
+    char publishString[32];
+
+    SERIAL.println("Publishing alarm event");
+
+    snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f}", currentTempF);
+    Particle.publish("tempAlarm", publishString, PRIVATE);
+}
+
 static int setReportRate(String rate)
 {
-    unsigned int reportMillis = atoi(rate.c_str());
-
-    SERIAL.printlnf("New reportMillis: %u", reportMillis);
-
-    sensorSettings.reportMillis = reportMillis;
+    sensorSettings.reportMillis = atoi(rate.c_str());
     EEPROM.put(SETTINGS_ADDR, sensorSettings);
+
+    SERIAL.printlnf("New reportMillis: %u", sensorSettings.reportMillis);
 
     return 0;
 }
@@ -83,6 +97,106 @@ static int setAIOKey(String aioKey)
     }
 
     return -1;
+}
+
+static int setLowThres(String lowThres)
+{
+    sensorSettings.lowThres = atoi(lowThres.c_str());
+    EEPROM.put(SETTINGS_ADDR, sensorSettings);
+
+    SERIAL.printlnf("New Low Threshold: %d", sensorSettings.lowThres);
+
+#if USE_ADAFRUIT_IO
+    // Keep Adafruit IO in sync
+    Adafruit_IO_Feed lowThresFeed = AIOClient->getFeed("temp-alarm.low-threshold");
+    char publishString[8];
+    snprintf(publishString, sizeof(publishString), "%d", sensorSettings.lowThres);
+    if (!lowThresFeed.send(publishString))
+    {
+        SERIAL.println("Failed to publish low threshold to Adafruit IO!");
+    }
+#endif
+
+    return 0;
+}
+
+static int setHighThres(String highThres)
+{
+    sensorSettings.highThres = atoi(highThres.c_str());
+    EEPROM.put(SETTINGS_ADDR, sensorSettings);
+
+    SERIAL.printlnf("New High Threshold: %d", sensorSettings.highThres);
+
+#if USE_ADAFRUIT_IO
+    // Keep Adafruit IO in sync
+    Adafruit_IO_Feed highThresFeed = AIOClient->getFeed("temp-alarm.high-threshold");
+    char publishString[8];
+    snprintf(publishString, sizeof(publishString), "%d", sensorSettings.highThres);
+    if (!highThresFeed.send(publishString))
+    {
+        SERIAL.println("Failed to publish high threshold to Adafruit IO!");
+    }
+#endif
+
+    return 0;
+}
+
+static void doAlarmIfNecessary(void)
+{
+#if USE_ADAFRUIT_IO
+    static unsigned long lastAIOThresMillis = 0;
+    unsigned long now = millis();
+
+    if ((now - lastAIOThresMillis) >= AIO_CHECK_MS)
+    {
+        // Get latest values from Adafruit IO
+        Adafruit_IO_Feed lowThresFeed = AIOClient->getFeed("temp-alarm.low-threshold");
+        FeedData lowThresLatest = lowThresFeed.receive();
+        if (lowThresLatest.isValid())
+        {
+            int newLowThres;
+            lowThresLatest.intValue(&newLowThres);
+            if (newLowThres != sensorSettings.lowThres)
+            {
+                sensorSettings.lowThres = newLowThres;
+                EEPROM.put(SETTINGS_ADDR, sensorSettings);
+
+                SERIAL.printlnf("New Low Threshold: %d", sensorSettings.lowThres);
+            }
+        }
+
+        Adafruit_IO_Feed highThresFeed = AIOClient->getFeed("temp-alarm.high-threshold");
+        FeedData highThresLatest = highThresFeed.receive();
+        if (highThresLatest.isValid())
+        {
+            int newHighThres;
+            highThresLatest.intValue(&newHighThres);
+            if (newHighThres != sensorSettings.highThres)
+            {
+                sensorSettings.highThres = newHighThres;
+                EEPROM.put(SETTINGS_ADDR, sensorSettings);
+
+                SERIAL.printlnf("New High Threshold: %d", sensorSettings.highThres);
+            }
+        }
+
+        lastAIOThresMillis = now;
+    }
+#endif
+
+    // Check if temperature outside allowed range
+    if ((currentTempF < sensorSettings.lowThres) || (currentTempF > sensorSettings.highThres))
+    {
+        if (!sentAlarm)
+        {
+            doAlarm();
+        }
+        sentAlarm = true;
+    }
+    else
+    {
+        sentAlarm = false;
+    }
 }
 
 static void doMonitorIfTime(void)
@@ -121,6 +235,8 @@ static void doMonitorIfTime(void)
 
             haveValidReading = true;
             digitalWrite(LED_PIN, LOW);
+
+            doAlarmIfNecessary();
         }
 
         lastReadingMillis = now;
@@ -168,15 +284,13 @@ void setup(void)
 {
     SERIAL.begin(SERIAL_BAUD);
 
-    SERIAL.println("Initializing DHT22 sensor");
-    dht.begin();
-    delay(2000);
-
     EEPROM.get(SETTINGS_ADDR, sensorSettings);
     if (SETTINGS_MAGIC_NUM == sensorSettings.magic)
     {
         SERIAL.printlnf("reportMillis = %u", sensorSettings.reportMillis);
         SERIAL.printlnf("AIO Key: %s", sensorSettings.aioKey);
+        SERIAL.printlnf("Low Threshold: %d", sensorSettings.lowThres);
+        SERIAL.printlnf("High Threshold: %d", sensorSettings.highThres);
     }
     else
     {
@@ -184,14 +298,24 @@ void setup(void)
         sensorSettings.magic = SETTINGS_MAGIC_NUM;
         sensorSettings.reportMillis = DEFAULT_REPORT_MS;
         // sensorSettings.aioKey intentionally not set
+        sensorSettings.lowThres = DEFAULT_LOW_THRES;
+        sensorSettings.highThres = DEFAULT_HIGH_THRES;
         EEPROM.put(SETTINGS_ADDR, sensorSettings);
     }
 
-    Particle.variable("currentTempF", &currentTempF, DOUBLE);
-    Particle.variable("currentHumid", &currentHumid, DOUBLE);
+    Particle.variable("currentTempF", currentTempF);
+    Particle.variable("currentHumid", currentHumid);
+    Particle.variable("lowThres", sensorSettings.lowThres);
+    Particle.variable("highThres", sensorSettings.highThres);
 
     Particle.function("reportRate", setReportRate);
     Particle.function("aioKey", setAIOKey);
+    Particle.function("lowThres", setLowThres);
+    Particle.function("highThres", setHighThres);
+
+    SERIAL.println("Initializing DHT22 sensor");
+    dht.begin();
+    delay(2000);
 
 #if USE_ADAFRUIT_IO
     AIOClient = new Adafruit_IO_Client(tcpClient, sensorSettings.aioKey);
