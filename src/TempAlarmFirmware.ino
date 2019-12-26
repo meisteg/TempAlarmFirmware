@@ -151,6 +151,13 @@ static void doReportIfTime(void)
         {
             SERIAL.println("Failed to publish temperature to Adafruit IO!");
         }
+
+        Adafruit_IO_Feed humidityFeed = AIOClient->getFeed("temp-alarm.humidity");
+        snprintf(publishString, sizeof(publishString), "%.1f", currentHumid);
+        if (!humidityFeed.send(publishString))
+        {
+            SERIAL.println("Failed to publish humidity to Adafruit IO!");
+        }
 #endif
 
         lastReportMillis = now;
@@ -176,6 +183,7 @@ void setup(void)
         SERIAL.println("EEPROM not programmed! Setting default values.");
         sensorSettings.magic = SETTINGS_MAGIC_NUM;
         sensorSettings.reportMillis = DEFAULT_REPORT_MS;
+        // sensorSettings.aioKey intentionally not set
         EEPROM.put(SETTINGS_ADDR, sensorSettings);
     }
 
