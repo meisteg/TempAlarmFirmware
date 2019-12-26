@@ -141,6 +141,12 @@ static int setHighThres(String highThres)
     return 0;
 }
 
+static int alarmTest(String used)
+{
+    doAlarm();
+    return 0;
+}
+
 static void doAlarmIfNecessary(void)
 {
 #if USE_ADAFRUIT_IO
@@ -312,6 +318,7 @@ void setup(void)
     Particle.function("aioKey", setAIOKey);
     Particle.function("lowThres", setLowThres);
     Particle.function("highThres", setHighThres);
+    Particle.function("alarmTest", alarmTest);
 
     SERIAL.println("Initializing DHT22 sensor");
     dht.begin();
