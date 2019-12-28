@@ -155,6 +155,8 @@ static void doAlarmIfNecessary(void)
 
     if ((now - lastAIOThresMillis) >= AIO_CHECK_MS)
     {
+        SERIAL.println("Getting thresholds from Adafruit IO");
+
         // Get latest values from Adafruit IO
         Adafruit_IO_Feed lowThresFeed = AIOClient->getFeed("temp-alarm.low-threshold");
         FeedData lowThresLatest = lowThresFeed.receive();
@@ -162,7 +164,7 @@ static void doAlarmIfNecessary(void)
         {
             int newLowThres;
             lowThresLatest.intValue(&newLowThres);
-            if (newLowThres != sensorSettings.lowThres)
+            if ((newLowThres != 0) && (newLowThres != sensorSettings.lowThres))
             {
                 sensorSettings.lowThres = newLowThres;
                 EEPROM.put(SETTINGS_ADDR, sensorSettings);
@@ -170,6 +172,13 @@ static void doAlarmIfNecessary(void)
                 SERIAL.printlnf("New Low Threshold: %d", sensorSettings.lowThres);
             }
         }
+        else
+        {
+            SERIAL.println("Adafruit IO low threshold is not valid!");
+        }
+
+        // Yield to Particle before retrieving the high threshold
+        Particle.process();
 
         Adafruit_IO_Feed highThresFeed = AIOClient->getFeed("temp-alarm.high-threshold");
         FeedData highThresLatest = highThresFeed.receive();
@@ -177,13 +186,17 @@ static void doAlarmIfNecessary(void)
         {
             int newHighThres;
             highThresLatest.intValue(&newHighThres);
-            if (newHighThres != sensorSettings.highThres)
+            if ((newHighThres != 0) && (newHighThres != sensorSettings.highThres))
             {
                 sensorSettings.highThres = newHighThres;
                 EEPROM.put(SETTINGS_ADDR, sensorSettings);
 
                 SERIAL.printlnf("New High Threshold: %d", sensorSettings.highThres);
             }
+        }
+        else
+        {
+            SERIAL.println("Adafruit IO high threshold is not valid!");
         }
 
         lastAIOThresMillis = now;
@@ -273,6 +286,9 @@ static void doReportIfTime(void)
         {
             SERIAL.println("Failed to publish temperature to Adafruit IO!");
         }
+
+        // Yield to Particle before sending the humidity
+        Particle.process();
 
         Adafruit_IO_Feed humidityFeed = AIOClient->getFeed("temp-alarm.humidity");
         snprintf(publishString, sizeof(publishString), "%.1f", currentHumid);
