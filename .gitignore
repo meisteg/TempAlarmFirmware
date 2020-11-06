@@ -1,6 +1,6 @@
-.vscode/*
-target/*
-lib/*
+*/.vscode/*
+*/target/*
+*/lib/*
 
 *.bin
 
