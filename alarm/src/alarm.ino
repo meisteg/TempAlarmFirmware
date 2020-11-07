@@ -21,6 +21,24 @@
 // Not defined by DeviceOS for some reason
 #define RGB_COLOR_NONE     0x00000000
 
+#define PIN_PIEZO          D0
+
+#define ALARM_FREQ         4000
+
+#define NOTE_G3            2551
+#define NOTE_G4            1276
+#define NOTE_C5            956
+#define NOTE_E5            759
+#define NOTE_G5            638
+#define RELEASE            20
+#define BPM                100
+
+// Notes in the startup melody:
+int melody[] = {NOTE_E5,NOTE_E5,0,NOTE_E5,0,NOTE_C5,NOTE_E5,0,NOTE_G5,0,0,NOTE_G4};
+
+// Note durations: 4 = quarter note, 2 = half note, etc.:
+int noteDurations[] = {4,4,4,4,4,4,4,4,4,2,4,4};
+
 LEDStatus blinkRed(RGB_COLOR_RED, LED_PATTERN_BLINK, LED_SPEED_NORMAL, LED_PRIORITY_IMPORTANT);
 
 // Used to setup the system LED theme: disable the breathing cyan on cloud connection
@@ -36,6 +54,7 @@ void temp_alarm(const char *event, const char *data)
 {
   SERIAL.printlnf("%s: %s", event, data);
   blinkRed.setActive(true);
+  tone(PIN_PIEZO, ALARM_FREQ, 60000);
 }
 
 void button_press(system_event_t event, int param)
@@ -49,6 +68,7 @@ void button_press(system_event_t event, int param)
     if (blinkRed.isActive())
     {
       blinkRed.setActive(false);
+      noTone(PIN_PIEZO);
     }
     // Enable/disable breathing cyan if not alarming
     else if (theme.color(LED_SIGNAL_CLOUD_CONNECTED) == RGB_COLOR_NONE)
@@ -64,6 +84,12 @@ void button_press(system_event_t event, int param)
   }
 }
 
+int set_tone(String freq)
+{
+  tone(PIN_PIEZO, atoi(freq.c_str()), 2000);
+  return 0;
+}
+
 void setup() {
   SERIAL.begin(SERIAL_BAUD);
   SERIAL.println("Temperature alarm initializing");
@@ -75,6 +101,21 @@ void setup() {
 
   theme.setColor(LED_SIGNAL_CLOUD_CONNECTED, RGB_COLOR_NONE);
   theme.apply();
+
+  Particle.function("toneFreq", set_tone);
+
+  // Iterate over the notes of the startup melody:
+  for (unsigned int note = 0; note < (sizeof(melody) / sizeof(melody[0])); note++)
+  {
+    // To calculate the note duration, take one second
+    // divided by the note type.
+    // e.g. quarter note = 1000 / 4, eighth note = 1000/8, etc.
+    int noteDuration = 60 * 1000 / BPM / noteDurations[note];
+    tone(PIN_PIEZO, (melody[note] != 0) ? (500000/melody[note]) : 0, noteDuration - RELEASE);
+
+    // Blocking delay needed because tone() does not block
+    delay(noteDuration);
+  }
 }
 
 void loop() {
