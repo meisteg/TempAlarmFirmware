@@ -5,3 +5,4 @@
 *.bin
 
 TempAlarmFirmware.cpp
+alarm.cpp
