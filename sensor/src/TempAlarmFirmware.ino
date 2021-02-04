@@ -52,8 +52,8 @@ struct SensorSettings
 };
 
 SensorSettings sensorSettings;
-double currentTempF = 0.0;
-double currentHumid = 0.0;
+int currentTempF = 0;
+int currentHumid = 0;
 bool haveValidReading = false;
 bool sentAlarm = false;
 
@@ -70,7 +70,7 @@ static void doAlarm(void)
 
     SERIAL.println("Publishing alarm event");
 
-    snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f}", currentTempF);
+    snprintf(publishString, sizeof(publishString), "{\"tempF\": %d}", currentTempF);
     Particle.publish("tempAlarm", publishString, PRIVATE);
 }
 
@@ -246,10 +246,10 @@ static void doMonitorIfTime(void)
         // Reading is good, keep it
         else
         {
-            currentHumid = h;
-            currentTempF = f;
+            currentHumid = roundf(h);
+            currentTempF = roundf(f);
 
-            SERIAL.printf("Humid: %.2f%% - Temp: %.2f*F ", currentHumid, currentTempF);
+            SERIAL.printf("Humid: %d%% - Temp: %d*F ", currentHumid, currentTempF);
             SERIAL.println(Time.timeStr());
 
             haveValidReading = true;
@@ -275,13 +275,13 @@ static void doReportIfTime(void)
     {
         SERIAL.println("Reporting sensor data to server");
 
-        snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f, \"humid\": %.1f}", currentTempF, currentHumid);
+        snprintf(publishString, sizeof(publishString), "{\"tempF\": %d, \"humid\": %d}", currentTempF, currentHumid);
         Particle.publish("sensorData", publishString, PRIVATE);
 
 #ifdef USE_ADAFRUIT_IO
         // Send to Adafruit IO
         Adafruit_IO_Feed tempFeed = AIOClient->getFeed("temp-alarm.temperature");
-        snprintf(publishString, sizeof(publishString), "%.1f", currentTempF);
+        snprintf(publishString, sizeof(publishString), "%d", currentTempF);
         if (!tempFeed.send(publishString))
         {
             SERIAL.println("Failed to publish temperature to Adafruit IO!");
@@ -291,7 +291,7 @@ static void doReportIfTime(void)
         Particle.process();
 
         Adafruit_IO_Feed humidityFeed = AIOClient->getFeed("temp-alarm.humidity");
-        snprintf(publishString, sizeof(publishString), "%.1f", currentHumid);
+        snprintf(publishString, sizeof(publishString), "%d", currentHumid);
         if (!humidityFeed.send(publishString))
         {
             SERIAL.println("Failed to publish humidity to Adafruit IO!");
