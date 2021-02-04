@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Gregory S. Meiste  <http://gregmeiste.com>
+ * Copyright (C) 2015-2021 Gregory S. Meiste  <http://gregmeiste.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@
 // Adafruit IO API Key length
 #define AIO_KEY_LEN        32
 
-#define USE_ADAFRUIT_IO    (PLATFORM_ID != PLATFORM_XENON)
+#define USE_ADAFRUIT_IO
 
 struct SensorSettings
 {
@@ -59,7 +59,7 @@ bool sentAlarm = false;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
-#if USE_ADAFRUIT_IO
+#ifdef USE_ADAFRUIT_IO
 TCPClient tcpClient;
 Adafruit_IO_Client* AIOClient;
 #endif
@@ -106,7 +106,7 @@ static int setLowThres(String lowThres)
 
     SERIAL.printlnf("New Low Threshold: %d", sensorSettings.lowThres);
 
-#if USE_ADAFRUIT_IO
+#ifdef USE_ADAFRUIT_IO
     // Keep Adafruit IO in sync
     Adafruit_IO_Feed lowThresFeed = AIOClient->getFeed("temp-alarm.low-threshold");
     char publishString[8];
@@ -127,7 +127,7 @@ static int setHighThres(String highThres)
 
     SERIAL.printlnf("New High Threshold: %d", sensorSettings.highThres);
 
-#if USE_ADAFRUIT_IO
+#ifdef USE_ADAFRUIT_IO
     // Keep Adafruit IO in sync
     Adafruit_IO_Feed highThresFeed = AIOClient->getFeed("temp-alarm.high-threshold");
     char publishString[8];
@@ -149,7 +149,7 @@ static int alarmTest(String used)
 
 static void doAlarmIfNecessary(void)
 {
-#if USE_ADAFRUIT_IO
+#ifdef USE_ADAFRUIT_IO
     static unsigned long lastAIOThresMillis = 0;
     unsigned long now = millis();
 
@@ -278,7 +278,7 @@ static void doReportIfTime(void)
         snprintf(publishString, sizeof(publishString), "{\"tempF\": %.1f, \"humid\": %.1f}", currentTempF, currentHumid);
         Particle.publish("sensorData", publishString, PRIVATE);
 
-#if USE_ADAFRUIT_IO
+#ifdef USE_ADAFRUIT_IO
         // Send to Adafruit IO
         Adafruit_IO_Feed tempFeed = AIOClient->getFeed("temp-alarm.temperature");
         snprintf(publishString, sizeof(publishString), "%.1f", currentTempF);
@@ -340,7 +340,7 @@ void setup(void)
     dht.begin();
     delay(2000);
 
-#if USE_ADAFRUIT_IO
+#ifdef USE_ADAFRUIT_IO
     AIOClient = new Adafruit_IO_Client(tcpClient, sensorSettings.aioKey);
     AIOClient->begin();
 #endif
