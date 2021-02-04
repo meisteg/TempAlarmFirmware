@@ -28,6 +28,7 @@
 
 #define SENSOR_CHECK_MS    2000
 #define AIO_CHECK_MS       60000
+#define ALARM_MS           60000
 
 #define SETTINGS_ADDR      0x0000
 #define SETTINGS_MAGIC_NUM 0xdeb8ab1e
@@ -55,7 +56,6 @@ SensorSettings sensorSettings;
 int currentTempF = 0;
 int currentHumid = 0;
 bool haveValidReading = false;
-bool sentAlarm = false;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
@@ -149,9 +149,12 @@ static int alarmTest(String used)
 
 static void doAlarmIfNecessary(void)
 {
+    static unsigned long lastAlarmMillis = 0;
+    static bool sentAlarm = false;
+    unsigned long now = millis();
+
 #ifdef USE_ADAFRUIT_IO
     static unsigned long lastAIOThresMillis = 0;
-    unsigned long now = millis();
 
     if ((now - lastAIOThresMillis) >= AIO_CHECK_MS)
     {
@@ -203,19 +206,23 @@ static void doAlarmIfNecessary(void)
     }
 #endif
 
-    // Check if temperature outside allowed range
+    // Check if temperature is outside the allowed range
     if ((currentTempF < sensorSettings.lowThres) || (currentTempF > sensorSettings.highThres))
     {
-        if (!sentAlarm)
+        // Only alarm if enough time has passed from last alarm to avoid spamming user
+        if (!sentAlarm && ((now - lastAlarmMillis) >= ALARM_MS))
         {
             doAlarm();
+            lastAlarmMillis = now;
+            sentAlarm = true;
         }
-        sentAlarm = true;
     }
     else
     {
+        // All clear!
         sentAlarm = false;
     }
+
 }
 
 static void doMonitorIfTime(void)
