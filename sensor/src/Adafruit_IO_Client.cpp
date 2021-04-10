@@ -20,7 +20,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-#define ADAFRUIT_IO_DEBUG 1
+
 #include "Adafruit_IO_Client.h"
 
 bool Adafruit_IO_Client::send(const char* feed, const char* value,
